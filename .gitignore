@@ -1,0 +1,71 @@
+# Environment variables
+.env
+.env.*
+!env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+.python-version
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Gradio
+gradio_cached_examples/
+flagged/
+
+# LangChain specific
+.langchain.db
+.langchain/
+
+# Vector database files
+*.index
+pinecone_index/
+*.faiss
+*.pkl
+*.bin
+
+# Large data files
+data/
+datasets/
+vectors/ 

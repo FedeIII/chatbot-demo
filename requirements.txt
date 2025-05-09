@@ -1,0 +1,8 @@
+langchain
+langchain-xai
+python-dotenv
+langchain-pinecone
+pinecone-client
+gradio
+langchain-core
+langchain-openai
