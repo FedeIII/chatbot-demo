@@ -1,9 +1,7 @@
 import os
 from dotenv import load_dotenv
-from pinecone import Pinecone, ServerlessSpec
+from pinecone import Pinecone
 from langchain_pinecone import PineconeVectorStore
-from langchain_xai import ChatXAI
-from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_openai import OpenAIEmbeddings
 
 # Load environment variables
@@ -53,21 +51,4 @@ def init_vector_store():
         search_kwargs={"k": 5}  # Retrieve top 5 most similar documents
     )
     
-    return retriever
-
-if __name__ == "__main__":
-    # Test the vector store setup
-    try:
-        retriever = init_vector_store()
-        print("Vector store retriever initialized successfully.")
-        
-        # Test the retriever with a simple query
-        docs = retriever.invoke("test query")
-        print(f"Retrieved {len(docs)} documents")
-        
-        # Print the first document content (if any)
-        if len(docs) > 0:
-            print("\nSample document content:")
-            print(docs[0].page_content[:200] + "..." if len(docs[0].page_content) > 200 else docs[0].page_content)
-    except Exception as e:
-        print(f"Error: {e}") 
+    return retriever 

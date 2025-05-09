@@ -4,6 +4,36 @@ from rag_chain import create_rag_chain, SYSTEM_PROMPT
 from chat_memory import ChatbotWithMemory
 import uuid
 import warnings
+from dotenv import load_dotenv
+from vector_store import init_vector_store
+from langchain_xai import ChatXAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langsmith import Client
+
+# Load environment variables
+load_dotenv()
+
+# Configure LangSmith (mandatory)
+langsmith_api_key = os.getenv('LANGCHAIN_API_KEY_BOE')
+langsmith_project = os.getenv('LANGCHAIN_PROJECT_BOE', 'lawyer-ai-boe')
+
+if langsmith_api_key:
+    os.environ['LANGCHAIN_API_KEY'] = langsmith_api_key
+    os.environ['LANGCHAIN_PROJECT'] = langsmith_project
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+    print(f"LangSmith tracing enabled for project: {langsmith_project}")
+
+    # Test LangSmith connection
+    try:
+        client = Client()
+        print("Successfully connected to LangSmith")
+    except Exception as e:
+        print(f"Warning: Could not connect to LangSmith: {e}")
+        print("Please check your LANGCHAIN_API_KEY_BOE in the .env file")
+else:
+    print("LangSmith API key not found. Please set LANGCHAIN_API_KEY_BOE in your .env file.")
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -13,11 +43,63 @@ xai_api_key = os.getenv('XAI_API_KEY')
 if not xai_api_key:
     raise ValueError("XAI API key must be set in the .env file")
 
-# Create the RAG chain using the Pinecone retriever
-rag_chain = create_rag_chain()
-
 # Create the chatbot with memory
-chatbot_agent = ChatbotWithMemory(rag_chain, SYSTEM_PROMPT)
+class RAGChatbot:
+    def __init__(self):
+        self.session_docs = {}
+        self.retriever = init_vector_store()
+        self.model = ChatXAI(xai_api_key=xai_api_key, model="grok-3-mini-beta")
+        self.prompt = ChatPromptTemplate.from_template(SYSTEM_PROMPT)
+        self.session_histories = {}
+        
+    def chat(self, message, session_id):
+        # Initialize session if it doesn't exist
+        if session_id not in self.session_histories:
+            self.session_histories[session_id] = []
+            # Retrieve documents only on first message of the session
+            docs = self.retriever.invoke(message)
+            self.session_docs[session_id] = docs
+            context = "\n\n".join([doc.page_content for doc in docs])
+        else:
+            # Use previously retrieved documents for follow-up messages
+            if session_id in self.session_docs:
+                context = "\n\n".join([doc.page_content for doc in self.session_docs[session_id]])
+            else:
+                context = ""
+                
+        # Get history for this session
+        history = self.session_histories[session_id]
+        
+        # Prepare conversation history context
+        history_context = ""
+        if history:
+            history_context = "\n".join([f"User: {h['user']}\nAssistant: {h['assistant']}" for h in history])
+            history_context = f"Previous conversation:\n{history_context}\n\n"
+            
+        # Prepare input for the model
+        inputs = {
+            "context": context,
+            "question": message
+        }
+        
+        # Get response from the model - fixed chain construction
+        response = self.model.invoke(self.prompt.format(**inputs))
+        response_text = response.content
+        
+        # Store message and response in history
+        history_entry = {"user": message, "assistant": response_text}
+        self.session_histories[session_id].append(history_entry)
+        
+        return response_text
+        
+    def clear_history(self, session_id):
+        if session_id in self.session_histories:
+            self.session_histories[session_id] = []
+        if session_id in self.session_docs:
+            del self.session_docs[session_id]
+
+# Initialize chatbot
+chatbot_agent = RAGChatbot()
 
 def generate_session_id():
     """Generate a unique session ID for a new conversation."""
@@ -39,7 +121,8 @@ def respond(message, chat_history, session_id):
 
 def clear_conversation():
     """Clear the conversation and start a new session."""
-    return [], generate_session_id()
+    session_id = generate_session_id()
+    return [], session_id
 
 # Create the Gradio interface
 with gr.Blocks(css="""
@@ -47,8 +130,8 @@ with gr.Blocks(css="""
     .message-bot {background-color: #f0f0f0; padding: 10px; border-radius: 10px;}
     .message-user {background-color: #e6f7ff; padding: 10px; border-radius: 10px;}
 """) as demo:
-    gr.Markdown("# RAG-Powered Chatbot with XAI Grok-3-mini-beta")
-    gr.Markdown("Ask questions and the bot will use the XAI Grok-3-mini-beta model with RAG to answer.")
+    gr.Markdown("# RAG-Powered Legal Chatbot with Pinecone and XAI Grok-3-mini-beta")
+    gr.Markdown("Ask legal questions and the bot will retrieve relevant BOE (Boletín Oficial del Estado) documents for reference.")
     
     with gr.Row():
         with gr.Column():
@@ -87,9 +170,9 @@ with gr.Blocks(css="""
     # Examples
     gr.Examples(
         examples=[
-            "What are some legal considerations for starting a business?",
-            "Tell me about the benefits of forming an LLC.",
-            "How do I register a business name?",
+            "¿Qué documentos necesito para crear una sociedad limitada?",
+            "¿Cuáles son los derechos laborales básicos en España?",
+            "¿Cómo puedo registrar una marca comercial?",
         ],
         inputs=msg
     )

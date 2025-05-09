@@ -2,6 +2,19 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.chat_history import BaseChatMessageHistory
 from typing import List, Dict, Any, Optional
 import warnings
+import os
+from dotenv import load_dotenv
+from langsmith import Client
+
+# Load environment variables
+load_dotenv()
+
+# Configure LangSmith
+langsmith_api_key = os.getenv('LANGCHAIN_API_KEY_BOE')
+if langsmith_api_key:
+    os.environ['LANGCHAIN_API_KEY'] = langsmith_api_key
+    os.environ['LANGCHAIN_PROJECT'] = os.getenv('LANGCHAIN_PROJECT_BOE', 'lawyer-ai-boe')
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -29,23 +42,27 @@ class InMemoryChatMessageHistory(BaseChatMessageHistory):
 
 
 class ChatbotWithMemory:
-    """A chatbot with memory to maintain conversation context."""
+    """A chatbot with memory to maintain conversation context and documents."""
     
-    def __init__(self, rag_chain, system_prompt: str):
+    def __init__(self, retriever, model, prompt_template: str):
         """
-        Initialize the chatbot with a RAG chain and system prompt.
+        Initialize the chatbot with retriever, model and prompt template.
         
         Args:
-            rag_chain: The RAG chain for answering questions
-            system_prompt: The system prompt for the chatbot
+            retriever: The vector store retriever for RAG
+            model: The LLM to use for responses
+            prompt_template: The template for the chatbot prompts
         """
-        self.rag_chain = rag_chain
-        self.system_prompt = system_prompt
-        self.session_histories: Dict[str, List] = {}
+        self.retriever = retriever
+        self.model = model
+        self.prompt_template = prompt_template
+        self.session_histories = {}
+        self.session_documents = {}
         
     def chat(self, message: str, session_id: str) -> str:
         """
-        Process a user message and return a response, maintaining conversation history.
+        Process a user message and return a response, maintaining conversation history
+        and retrieving documents only on first message.
         
         Args:
             message: The user's message
@@ -54,67 +71,50 @@ class ChatbotWithMemory:
         Returns:
             The chatbot's response
         """
-        # Initialize session history if not exists
+        # Initialize session if it doesn't exist
         if session_id not in self.session_histories:
             self.session_histories[session_id] = []
-            
-        # Get history for this session
+            # Retrieve documents only on first message
+            docs = self.retriever.invoke(message)
+            self.session_documents[session_id] = docs
+            context = "\n\n".join([doc.page_content for doc in docs])
+        else:
+            # Use previously retrieved documents for follow-up messages
+            if session_id in self.session_documents:
+                context = "\n\n".join([doc.page_content for doc in self.session_documents[session_id]])
+            else:
+                context = ""
+        
+        # Get history and documents for this session
         history = self.session_histories[session_id]
         
-        # Prepare context from history
-        context = ""
+        # Prepare conversation history context
+        history_context = ""
         if history:
-            context = "\n".join([f"User: {h['user']}\nAssistant: {h['assistant']}" for h in history])
-            context = f"Previous conversation:\n{context}\n\n"
+            history_context = "\n".join([f"User: {h['user']}\nAssistant: {h['assistant']}" for h in history])
+            history_context = f"Previous conversation:\n{history_context}\n\n"
+            
+        # Process response using the model and retrieved documents
+        from langchain_core.prompts import ChatPromptTemplate
         
-        # Add current message to input
-        full_message = f"{message}"
+        prompt = ChatPromptTemplate.from_template(self.prompt_template)
+        inputs = {
+            "context": context,
+            "question": message
+        }
         
-        # Get response from the chain
-        response = self.rag_chain.invoke(full_message)
+        response = self.model.invoke(prompt.format(**inputs))
+        response_text = response.content
         
         # Store message and response in history
-        history_entry = {"user": message, "assistant": response}
+        history_entry = {"user": message, "assistant": response_text}
         self.session_histories[session_id].append(history_entry)
         
-        return response
+        return response_text
         
     def clear_history(self, session_id: str) -> None:
-        """Clear the history for a given session."""
+        """Clear the history and documents for a given session."""
         if session_id in self.session_histories:
             self.session_histories[session_id] = []
-
-
-if __name__ == "__main__":
-    # Test the chatbot with memory
-    from rag_chain import create_rag_chain, SYSTEM_PROMPT
-    
-    try:
-        # Create the RAG chain
-        rag_chain = create_rag_chain()
-        
-        # Create the chatbot with memory
-        chatbot = ChatbotWithMemory(rag_chain, SYSTEM_PROMPT)
-        
-        # Test a conversation
-        session_id = "test-session"
-        
-        # First message
-        first_query = "What are some legal considerations for starting a business?"
-        first_response = chatbot.chat(first_query, session_id)
-        print(f"User: {first_query}")
-        print(f"Bot: {first_response}\n")
-        
-        # Follow-up questions 
-        follow_up_1 = "Can you explain more about business structures?"
-        follow_up_response_1 = chatbot.chat(follow_up_1, session_id)
-        print(f"User: {follow_up_1}")
-        print(f"Bot: {follow_up_response_1}\n")
-        
-        follow_up_2 = "What about tax obligations?"
-        follow_up_response_2 = chatbot.chat(follow_up_2, session_id)
-        print(f"User: {follow_up_2}")
-        print(f"Bot: {follow_up_response_2}")
-        
-    except Exception as e:
-        print(f"Error: {e}") 
+        if session_id in self.session_documents:
+            del self.session_documents[session_id] 
