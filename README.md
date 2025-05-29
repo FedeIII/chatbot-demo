@@ -1,10 +1,10 @@
-# RAG-Powered Chatbot with XAI Grok-3-mini-beta
+# RAG-Powered Chatbot with XAI Grok-3-mini
 
-This project implements a chatbot that uses Retrieval-Augmented Generation (RAG) with XAI's Grok-3-mini-beta model to provide context-aware responses. The chatbot retrieves relevant information from a Pinecone vector store and maintains conversation context.
+This project implements a chatbot that uses Retrieval-Augmented Generation (RAG) with XAI's Grok-3-mini model to provide context-aware responses. The chatbot retrieves relevant information from a Pinecone vector store and maintains conversation context.
 
 ## Features
 
-- Uses XAI's Grok-3-mini-beta model
+- Uses XAI's Grok-3-mini model
 - Implements RAG with Pinecone vector store
 - Maintains conversation context across multiple interactions
 - Provides a simple Gradio UI for interaction
@@ -13,7 +13,7 @@ This project implements a chatbot that uses Retrieval-Augmented Generation (RAG)
 
 - Python 3.8+
 - API keys for:
-  - XAI (for Grok-3-mini-beta)
+  - XAI (for Grok-3-mini)
   - Pinecone (for vector store)
   - OpenAI (for embeddings)
   - LangChain (optional, for tracing)

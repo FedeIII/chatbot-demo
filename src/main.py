@@ -26,7 +26,7 @@ if not langchain_project:
     raise ValueError("Please set the LANGCHAIN_PROJECT_BOE environment variable in your .env file.")
 
 # Set up basic model (will be integrated with RAG in next steps)
-chat = ChatXAI(xai_api_key=xai_api_key, model="grok-3-mini-beta")
+chat = ChatXAI(xai_api_key=xai_api_key, model="grok-3-mini")
 
 # Temporary basic example to test environment setup
 if __name__ == "__main__":

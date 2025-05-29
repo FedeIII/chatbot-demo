@@ -48,14 +48,16 @@ class RAGChatbot:
     def __init__(self):
         self.session_docs = {}
         self.retriever = init_vector_store()
-        self.model = ChatXAI(xai_api_key=xai_api_key, model="grok-3-mini-beta")
+        self.model = ChatXAI(xai_api_key=xai_api_key, model="grok-3-mini")
         self.prompt = ChatPromptTemplate.from_template(SYSTEM_PROMPT)
         self.session_histories = {}
+        self.conversation_steps = {}  # Track the step in the conversation flow
         
     def chat(self, message, session_id):
         # Initialize session if it doesn't exist
         if session_id not in self.session_histories:
             self.session_histories[session_id] = []
+            self.conversation_steps[session_id] = 1  # Initial step
             # Retrieve documents only on first message of the session
             docs = self.retriever.invoke(message)
             self.session_docs[session_id] = docs
@@ -66,9 +68,14 @@ class RAGChatbot:
                 context = "\n\n".join([doc.page_content for doc in self.session_docs[session_id]])
             else:
                 context = ""
+            
+            # Advance to the next conversation step    
+            current_step = self.conversation_steps.get(session_id, 1)
+            self.conversation_steps[session_id] = current_step + 1
                 
         # Get history for this session
         history = self.session_histories[session_id]
+        current_step = self.conversation_steps[session_id]
         
         # Prepare conversation history context
         history_context = ""
@@ -81,6 +88,14 @@ class RAGChatbot:
             "context": context,
             "question": message
         }
+        
+        # Add conversation step hint to the question
+        if current_step == 1:
+            inputs["question"] = f"{message} [PRIMERA INTERACCIÓN]"
+        elif current_step == 2:
+            inputs["question"] = f"{message} [SEGUNDA INTERACCIÓN - RESPUESTA DEL USUARIO A LAS PREGUNTAS]"
+        else:
+            inputs["question"] = f"{message} [INTERACCIÓN POSTERIOR]"
         
         # Get response from the model - fixed chain construction
         response = self.model.invoke(self.prompt.format(**inputs))
@@ -97,6 +112,8 @@ class RAGChatbot:
             self.session_histories[session_id] = []
         if session_id in self.session_docs:
             del self.session_docs[session_id]
+        if session_id in self.conversation_steps:
+            self.conversation_steps[session_id] = 1
 
 # Initialize chatbot
 chatbot_agent = RAGChatbot()
@@ -130,7 +147,7 @@ with gr.Blocks(css="""
     .message-bot {background-color: #f0f0f0; padding: 10px; border-radius: 10px;}
     .message-user {background-color: #e6f7ff; padding: 10px; border-radius: 10px;}
 """) as demo:
-    gr.Markdown("# RAG-Powered Legal Chatbot with Pinecone and XAI Grok-3-mini-beta")
+    gr.Markdown("# LegifAI")
     gr.Markdown("Ask legal questions and the bot will retrieve relevant BOE (Boletín Oficial del Estado) documents for reference.")
     
     with gr.Row():

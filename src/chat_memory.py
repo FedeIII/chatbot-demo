@@ -58,6 +58,7 @@ class ChatbotWithMemory:
         self.prompt_template = prompt_template
         self.session_histories = {}
         self.session_documents = {}
+        self.conversation_steps = {}  # Track the conversation step for each session
         
     def chat(self, message: str, session_id: str) -> str:
         """
@@ -74,6 +75,7 @@ class ChatbotWithMemory:
         # Initialize session if it doesn't exist
         if session_id not in self.session_histories:
             self.session_histories[session_id] = []
+            self.conversation_steps[session_id] = 1  # Initial step
             # Retrieve documents only on first message
             docs = self.retriever.invoke(message)
             self.session_documents[session_id] = docs
@@ -84,9 +86,14 @@ class ChatbotWithMemory:
                 context = "\n\n".join([doc.page_content for doc in self.session_documents[session_id]])
             else:
                 context = ""
+            
+            # Advance to the next conversation step
+            current_step = self.conversation_steps.get(session_id, 1)
+            self.conversation_steps[session_id] = current_step + 1
         
         # Get history and documents for this session
         history = self.session_histories[session_id]
+        current_step = self.conversation_steps[session_id]
         
         # Prepare conversation history context
         history_context = ""
@@ -103,6 +110,14 @@ class ChatbotWithMemory:
             "question": message
         }
         
+        # Add conversation step hint to the question
+        if current_step == 1:
+            inputs["question"] = f"{message} [PRIMERA INTERACCIÓN]"
+        elif current_step == 2:
+            inputs["question"] = f"{message} [SEGUNDA INTERACCIÓN - RESPUESTA DEL USUARIO A LAS PREGUNTAS]"
+        else:
+            inputs["question"] = f"{message} [INTERACCIÓN POSTERIOR]"
+        
         response = self.model.invoke(prompt.format(**inputs))
         response_text = response.content
         
@@ -117,4 +132,6 @@ class ChatbotWithMemory:
         if session_id in self.session_histories:
             self.session_histories[session_id] = []
         if session_id in self.session_documents:
-            del self.session_documents[session_id] 
+            del self.session_documents[session_id]
+        if session_id in self.conversation_steps:
+            self.conversation_steps[session_id] = 1 

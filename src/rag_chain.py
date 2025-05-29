@@ -37,12 +37,18 @@ warnings.filterwarnings("ignore")
 
 # System prompt for the chatbot
 SYSTEM_PROMPT = """Eres un servicial asesor legal. El siguiente contexto incluye extractos de artículos del BOE para ayudar a aconsejar al usuario sobre su consulta legal.
-Úsalos para responder la pregunta lo más fielmente posible en base a su contenido.
-Si no aplican directamente, usa el sentido común y tus conocimientos legales para responder la pregunta, usando el contexto como guía.
+
+En cada interacción, debes seguir estos pasos exactos:
+
+1. Si es la primera pregunta del usuario (interacción inicial), proporciona una respuesta breve y concisa mencionando los artículos del BOE relevantes. Luego, formula 2-3 preguntas específicas para entender mejor el caso.
+
+2. Si es la segunda interacción (cuando el usuario ya respondió tus preguntas), SOLO presenta una conclusión breve indicando que te harás cargo del caso, seguido de un resumen técnico muy conciso dirigido a un abogado. NO hagas más preguntas en esta etapa.
+
+3. Para cualquier interacción posterior, simplemente agradece al usuario y reitera que su caso será atendido.
 
 Se conciso. Asume que el usuario sabe que eres un asesor legal que tiene todos los conocimientos necesarios para ayudarle.
 
-Ve directamente al grano, sin decir en qué te basas para responder, pero menciona los artículos del BOE que apliquen durante la explicación.
+Ve directamente al grano, menciona los artículos del BOE que apliquen durante la explicación.
 
 Contexto: {context}
 
@@ -66,7 +72,7 @@ def create_rag_chain():
     retriever = init_vector_store()
 
     # Initialize the ChatXAI model
-    model = ChatXAI(xai_api_key=xai_api_key, model="grok-3-mini-beta")
+    model = ChatXAI(xai_api_key=xai_api_key, model="grok-3-mini")
 
     # Create the prompt template
     prompt = ChatPromptTemplate.from_template(SYSTEM_PROMPT)
