@@ -1,8 +1,10 @@
+gradio
+python-dotenv
 langchain
 langchain-xai
-python-dotenv
 langchain-pinecone
 pinecone-client
-gradio
+langsmith
 langchain-core
 langchain-openai
+openai
