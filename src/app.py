@@ -111,10 +111,20 @@ class InputChat(BaseModel):
     )
 
 
+class OutputChat(BaseModel):
+    """Output for the chat endpoint."""
+    
+    response: str = Field(
+        ...,
+        description="The legal advice response from LegifAI.",
+        examples=["Según el artículo X del BOE, para crear una sociedad limitada necesita..."]
+    )
+
+
 # Create the RAG chain with history
 chain_with_history = create_rag_chain_with_history(
     create_session_factory("chat_histories")
-).with_types(input_type=InputChat)
+).with_types(input_type=InputChat, output_type=OutputChat)
 
 
 # Add the chat route

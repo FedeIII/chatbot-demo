@@ -28,7 +28,12 @@ def send_message(message, session_id=SESSION_ID):
     
     if response.status_code == 200:
         result = response.json()
-        return result["output"]
+        # Extract the response text from the dictionary format
+        output = result.get("output", {})
+        if isinstance(output, dict) and "response" in output:
+            return output["response"]
+        else:
+            return str(output)
     else:
         print(f"Error: {response.status_code}")
         print(response.text)

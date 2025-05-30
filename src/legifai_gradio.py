@@ -34,7 +34,11 @@ class LegifAIGradioClient:
             
             if response.status_code == 200:
                 result = response.json()
-                return result["output"]
+                # Extract the response text from the dictionary format
+                if isinstance(result.get("output"), dict) and "response" in result["output"]:
+                    return result["output"]["response"]
+                else:
+                    return result.get("output", "Error: Unexpected response format")
             else:
                 return f"Error: {response.status_code} - {response.text}"
                 

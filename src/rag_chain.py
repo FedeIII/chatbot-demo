@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from langchain_xai import ChatXAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import BaseOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from vector_store import init_vector_store
@@ -35,6 +35,24 @@ else:
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
+
+# Custom output parser for LangServe compatibility
+class LegifAIOutputParser(BaseOutputParser[dict]):
+    """Custom output parser that returns the response in LangServe-compatible format."""
+    
+    def parse(self, text):
+        """Parse the output from the language model."""
+        if hasattr(text, 'content'):
+            response_text = text.content
+        else:
+            response_text = str(text)
+        
+        # Return in the format expected by LangServe
+        return {"response": response_text}
+    
+    @property
+    def _type(self):
+        return "legifai_output_parser"
 
 # System prompt for the chatbot - updated to work with message history
 SYSTEM_PROMPT = """Eres un servicial asesor legal especializado en legislación española. El siguiente contexto incluye extractos de artículos del BOE para ayudar a aconsejar al usuario sobre su consulta legal.
@@ -105,12 +123,12 @@ def create_rag_chain_with_history(get_session_history):
         docs = retriever.invoke(inputs["human_input"])
         return "\n\n".join([doc.page_content for doc in docs])
 
-    # Create the RAG chain
+    # Create the RAG chain with custom output parser
     rag_chain = (
         RunnablePassthrough.assign(context=RunnableLambda(get_context))
         | prompt
         | model
-        | StrOutputParser()
+        | LegifAIOutputParser()
     )
 
     # Wrap with message history
@@ -122,33 +140,3 @@ def create_rag_chain_with_history(get_session_history):
     )
 
     return chain_with_history
-
-
-# Keep the original function for backward compatibility
-def create_rag_chain():
-    """
-    Create a basic RAG chain without history (legacy function)
-    """
-    # Get the XAI API key from environment variables
-    xai_api_key = os.getenv('XAI_API_KEY')
-    if not xai_api_key:
-        raise ValueError("XAI API key must be set")
-
-    # Initialize the retriever from Pinecone
-    retriever = init_vector_store()
-
-    # Initialize the ChatXAI model
-    model = ChatXAI(xai_api_key=xai_api_key, model="grok-3-mini")
-
-    # Create the prompt template
-    prompt = ChatPromptTemplate.from_template(SYSTEM_PROMPT)
-
-    # Create the RAG chain
-    rag_chain = (
-        {"context": retriever, "question": RunnablePassthrough()}
-        | prompt
-        | model
-        | StrOutputParser()
-    )
-
-    return rag_chain
