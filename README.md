@@ -1,78 +1,168 @@
-# RAG-Powered Chatbot with XAI Grok-3-mini
+# LegifAI - Legal Consultation API
 
-This project implements a chatbot that uses Retrieval-Augmented Generation (RAG) with XAI's Grok-3-mini model to provide context-aware responses. The chatbot retrieves relevant information from a Pinecone vector store and maintains conversation context.
+A FastAPI-based legal consultation chatbot that provides advice based on BOE (Boletín Oficial del Estado) documents using RAG (Retrieval-Augmented Generation). The chatbot follows a structured consultation flow with persistent conversation history.
 
 ## Features
 
-- Uses XAI's Grok-3-mini model
-- Implements RAG with Pinecone vector store
-- Maintains conversation context across multiple interactions
-- Provides a simple Gradio UI for interaction
+- 🤖 **Intelligent Legal Consultation**: Uses XAI's Grok model for legal advice
+- 📚 **BOE Document Retrieval**: Retrieves relevant Spanish legal documents
+- 💬 **Persistent Conversations**: Maintains chat history across sessions
+- 🔄 **Structured Flow**: Three-step consultation process
+- 📊 **LangSmith Tracing**: Complete observability of the conversation chain
+- 🚀 **Production Ready**: FastAPI server ready for deployment
 
-## Prerequisites
+## Architecture
+
+- **Backend**: FastAPI with LangServe for API endpoints
+- **LLM**: XAI Grok-3-mini for legal reasoning
+- **Vector Store**: Pinecone for document retrieval
+- **Embeddings**: OpenAI text-embedding-3-large
+- **Persistence**: File-based chat history using LangChain
+- **Observability**: LangSmith for tracing and monitoring
+
+## Consultation Flow
+
+1. **Initial Consultation**: User asks a legal question, bot provides brief answer with relevant BOE articles and asks follow-up questions
+2. **Detailed Response**: User answers the questions, bot provides conclusion and technical summary for lawyers
+3. **Case Closure**: Further interactions receive acknowledgment that the case is being handled
+
+## Setup
+
+### Prerequisites
 
 - Python 3.8+
-- API keys for:
-  - XAI (for Grok-3-mini)
-  - Pinecone (for vector store)
-  - OpenAI (for embeddings)
-  - LangChain (optional, for tracing)
+- XAI API key
+- Pinecone account with populated index
+- OpenAI API key (for embeddings)
+- LangSmith account (optional, for tracing)
 
-## Installation
+### Installation
 
 1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/chatbot-demo.git
-   cd chatbot-demo
-   ```
+```bash
+git clone <repository-url>
+cd chatbot-demo
+```
 
 2. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+```
 
-3. Create a `.env` file with your API keys:
-   ```
-   XAI_API_KEY=your_xai_api_key_here
-   PINECONE_API_KEY=your_pinecone_api_key_here
-   PINECONE_INDEX_BOE=your_pinecone_index_name_here
-   LANGCHAIN_API_KEY_BOE=your_langchain_api_key_here
-   LANGCHAIN_PROJECT_BOE=your_langchain_project_name_here
-   LANGCHAIN_TRACING_V2=true
-   OPENAI_API_KEY=your_openai_api_key_here
-   ```
+3. Set up environment variables:
+```bash
+cp env.example .env
+# Edit .env with your API keys
+```
 
-## Usage
+4. Test the setup:
+```bash
+python src/test_server.py
+```
 
-### Running the UI
+5. Start the server:
+```bash
+./start_server.sh
+# Or manually: cd src && python app.py
+```
 
-1. Start the Gradio interface:
-   ```
-   python app.py
-   ```
+## API Endpoints
 
-2. Open your browser and go to `http://127.0.0.1:7860` to interact with the chatbot.
+### Main Chat Endpoint
+- **POST** `/chat/invoke` - Send a message to the chatbot
+- **POST** `/chat/batch` - Send multiple messages
+- **GET** `/chat/playground` - Interactive web interface
 
-### Testing Components Individually
+### Management Endpoints
+- **GET** `/` - API information
+- **GET** `/health` - Health check
+- **GET** `/docs` - OpenAPI documentation
 
-- Test Vector Store: `python vector_store.py`
-- Test RAG Chain: `python rag_chain.py`
-- Test Chat Memory: `python chat_memory.py`
+### Example Usage
 
-## Project Structure
+```bash
+# Start a conversation
+curl -X POST "http://localhost:8000/chat/invoke" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "human_input": "¿Qué documentos necesito para crear una sociedad limitada?"
+    },
+    "config": {
+      "configurable": {
+        "session_id": "user123-session1"
+      }
+    }
+  }'
+```
 
-- `main.py`: Loads environment variables and verifies setup
-- `vector_store.py`: Sets up the Pinecone vector store and retriever
-- `rag_chain.py`: Implements the RAG chain with the Grok model
-- `chat_memory.py`: Manages conversation history and context
-- `app.py`: Provides the Gradio UI for the chatbot
+## Deployment
 
-## Notes
+### Render Deployment
 
-- The chatbot uses a dummy retriever by default in `app.py` for demonstration purposes. 
-- Set `use_real_retriever=True` in `app.py` once you have your Pinecone credentials set up.
-- For production use, consider implementing proper error handling and monitoring.
+1. Connect your repository to Render
+2. Set environment variables in Render dashboard:
+   - `XAI_API_KEY`
+   - `PINECONE_API_KEY`
+   - `PINECONE_INDEX_BOE`
+   - `OPENAI_API_KEY`
+   - `LANGCHAIN_API_KEY_BOE` (optional)
+   - `LANGCHAIN_PROJECT_BOE` (optional)
+
+3. Set build command: `pip install -r requirements.txt`
+4. Set start command: `cd src && python app.py`
+
+The server will automatically use the `PORT` environment variable provided by Render.
+
+### Local Development
+
+```bash
+# Start with default port 8000
+cd src && python app.py
+
+# Or use uvicorn directly
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+## LangSmith Integration
+
+The application is configured to send detailed traces to LangSmith, showing:
+- User input processing
+- Document retrieval from Pinecone  
+- LLM reasoning and response generation
+- Complete conversation chain
+
+Set `LANGCHAIN_API_KEY_BOE` and `LANGCHAIN_PROJECT_BOE` in your environment to enable tracing.
+
+## File Structure
+
+```
+chatbot-demo/
+├── src/
+│   ├── app.py              # FastAPI server with LangServe
+│   ├── rag_chain.py        # RAG chain with message history
+│   ├── vector_store.py     # Pinecone vector store setup
+│   ├── test_server.py      # Server test suite
+│   └── ...                 # Other utilities
+├── requirements.txt        # Python dependencies
+├── env.example            # Environment variables template
+├── start_server.sh        # Startup script
+└── README.md              # This file
+```
+
+## Environment Variables
+
+### Required
+- `XAI_API_KEY`: Your XAI API key for Grok model
+- `PINECONE_API_KEY`: Pinecone API key
+- `PINECONE_INDEX_BOE`: Name of your Pinecone index
+- `OPENAI_API_KEY`: OpenAI API key for embeddings
+
+### Optional
+- `LANGCHAIN_API_KEY_BOE`: LangSmith API key for tracing
+- `LANGCHAIN_PROJECT_BOE`: LangSmith project name
+- `PORT`: Server port (auto-set by Render)
 
 ## License
 
-[Your License]
+[Your License Here]

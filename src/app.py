@@ -1,16 +1,23 @@
+#!/usr/bin/env python
+"""LegifAI - Legal consultation chatbot with persistence.
+
+A FastAPI server that provides legal consultation services using RAG (Retrieval-Augmented Generation)
+with BOE (Boletín Oficial del Estado) documents. The server maintains conversation history
+and follows a structured consultation flow.
+"""
+import re
 import os
-import gradio as gr
-from rag_chain import create_rag_chain, SYSTEM_PROMPT
-from chat_memory import ChatbotWithMemory
-import uuid
-import warnings
+from pathlib import Path
+from typing import Callable, Union
+
+from fastapi import FastAPI, HTTPException
+from langchain_community.chat_message_histories import FileChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langserve import add_routes
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-from vector_store import init_vector_store
-from langchain_xai import ChatXAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
-from langsmith import Client
+
+from rag_chain import create_rag_chain_with_history
 
 # Load environment variables
 load_dotenv()
@@ -27,6 +34,7 @@ if langsmith_api_key:
 
     # Test LangSmith connection
     try:
+        from langsmith import Client
         client = Client()
         print("Successfully connected to LangSmith")
     except Exception as e:
@@ -35,179 +43,118 @@ if langsmith_api_key:
 else:
     print("LangSmith API key not found. Please set LANGCHAIN_API_KEY_BOE in your .env file.")
 
-# Suppress warnings
-warnings.filterwarnings("ignore")
-
-# Get the XAI API key from environment variables
+# Verify XAI API key
 xai_api_key = os.getenv('XAI_API_KEY')
 if not xai_api_key:
     raise ValueError("XAI API key must be set in the .env file")
 
-# Create the chatbot with memory
-class RAGChatbot:
-    def __init__(self):
-        self.session_docs = {}
-        self.retriever = init_vector_store()
-        self.model = ChatXAI(xai_api_key=xai_api_key, model="grok-3-mini")
-        self.prompt = ChatPromptTemplate.from_template(SYSTEM_PROMPT)
-        self.session_histories = {}
-        self.conversation_steps = {}  # Track the step in the conversation flow
-        
-    def chat(self, message, session_id):
-        # Initialize session if it doesn't exist
-        if session_id not in self.session_histories:
-            self.session_histories[session_id] = []
-            self.conversation_steps[session_id] = 1  # Initial step
-            # Retrieve documents only on first message of the session
-            docs = self.retriever.invoke(message)
-            self.session_docs[session_id] = docs
-            context = "\n\n".join([doc.page_content for doc in docs])
-        else:
-            # Use previously retrieved documents for follow-up messages
-            if session_id in self.session_docs:
-                context = "\n\n".join([doc.page_content for doc in self.session_docs[session_id]])
-            else:
-                context = ""
-            
-            # Advance to the next conversation step    
-            current_step = self.conversation_steps.get(session_id, 1)
-            self.conversation_steps[session_id] = current_step + 1
-                
-        # Get history for this session
-        history = self.session_histories[session_id]
-        current_step = self.conversation_steps[session_id]
-        
-        # Prepare conversation history context
-        history_context = ""
-        if history:
-            history_context = "\n".join([f"User: {h['user']}\nAssistant: {h['assistant']}" for h in history])
-            history_context = f"Previous conversation:\n{history_context}\n\n"
-            
-        # Prepare input for the model
-        inputs = {
-            "context": context,
-            "question": message
-        }
-        
-        # Add conversation step hint to the question
-        if current_step == 1:
-            inputs["question"] = f"{message} [PRIMERA INTERACCIÓN]"
-        elif current_step == 2:
-            inputs["question"] = f"{message} [SEGUNDA INTERACCIÓN - RESPUESTA DEL USUARIO A LAS PREGUNTAS]"
-        else:
-            inputs["question"] = f"{message} [INTERACCIÓN POSTERIOR]"
-        
-        # Get response from the model - fixed chain construction
-        response = self.model.invoke(self.prompt.format(**inputs))
-        response_text = response.content
-        
-        # Store message and response in history
-        history_entry = {"user": message, "assistant": response_text}
-        self.session_histories[session_id].append(history_entry)
-        
-        return response_text
-        
-    def clear_history(self, session_id):
-        if session_id in self.session_histories:
-            self.session_histories[session_id] = []
-        if session_id in self.session_docs:
-            del self.session_docs[session_id]
-        if session_id in self.conversation_steps:
-            self.conversation_steps[session_id] = 1
 
-# Initialize chatbot
-chatbot_agent = RAGChatbot()
+def _is_valid_identifier(value: str) -> bool:
+    """Check if the session ID is in a valid format."""
+    # Use a regular expression to match the allowed characters
+    valid_characters = re.compile(r"^[a-zA-Z0-9-_]+$")
+    return bool(valid_characters.match(value))
 
-def generate_session_id():
-    """Generate a unique session ID for a new conversation."""
-    return str(uuid.uuid4())
 
-def respond(message, chat_history, session_id):
-    """Process the user message and return the chatbot's response."""
-    # Create a new session if needed
-    if not session_id:
-        session_id = generate_session_id()
-        
-    # Get the bot's response
-    response = chatbot_agent.chat(message, session_id)
-    
-    # Update the chat history
-    chat_history.append((message, response))
-    
-    return "", chat_history, session_id
+def create_session_factory(
+    base_dir: Union[str, Path],
+) -> Callable[[str], BaseChatMessageHistory]:
+    """Create a session ID factory that creates session IDs from a base dir.
 
-def clear_conversation():
-    """Clear the conversation and start a new session."""
-    session_id = generate_session_id()
-    return [], session_id
+    Args:
+        base_dir: Base directory to use for storing the chat histories.
 
-# Create the Gradio interface
-with gr.Blocks(css="""
-    .gradio-container {max-width: 800px; margin: auto;}
-    .message-bot {background-color: #f0f0f0; padding: 10px; border-radius: 10px;}
-    .message-user {background-color: #e6f7ff; padding: 10px; border-radius: 10px;}
-""") as demo:
-    gr.Markdown("# LegifAI")
-    gr.Markdown("Ask legal questions and the bot will retrieve relevant BOE (Boletín Oficial del Estado) documents for reference.")
-    
-    with gr.Row():
-        with gr.Column():
-            # Hidden session ID
-            session_id = gr.State(generate_session_id())
-            
-            # Chat interface
-            chat_interface = gr.Chatbot(
-                label="Conversation",
-                height=500,
-                bubble_full_width=False,
-                show_copy_button=True,
-                avatar_images=("🧑", "🤖"),
-                elem_id="chatbot"
+    Returns:
+        A session ID factory that creates session IDs from a base path.
+    """
+    base_dir_ = Path(base_dir) if isinstance(base_dir, str) else base_dir
+    if not base_dir_.exists():
+        base_dir_.mkdir(parents=True)
+
+    def get_chat_history(session_id: str) -> FileChatMessageHistory:
+        """Get a chat history from a session ID."""
+        if not _is_valid_identifier(session_id):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Session ID `{session_id}` is not in a valid format. "
+                "Session ID must only contain alphanumeric characters, "
+                "hyphens, and underscores.",
             )
-            
-            # Message input
-            msg = gr.Textbox(
-                placeholder="Type your message here...",
-                label="Your Message",
-                scale=4,
-                container=False,
-                elem_id="message-input"
-            )
-            
-            # Buttons
-            with gr.Row():
-                submit_btn = gr.Button("Send", variant="primary", scale=1)
-                clear_btn = gr.Button("Clear Conversation", variant="secondary", scale=1)
+        file_path = base_dir_ / f"{session_id}.json"
+        return FileChatMessageHistory(str(file_path))
+
+    return get_chat_history
+
+
+# Create FastAPI app
+app = FastAPI(
+    title="LegifAI - Legal Consultation API",
+    version="1.0",
+    description="A legal consultation chatbot that provides advice based on BOE (Boletín Oficial del Estado) documents. "
+                "The chatbot follows a structured consultation flow: initial consultation, follow-up questions, "
+                "and final legal summary.",
+)
+
+
+class InputChat(BaseModel):
+    """Input for the chat endpoint."""
     
-    # Set up event handlers
-    submit_btn.click(respond, [msg, chat_interface, session_id], [msg, chat_interface, session_id])
-    msg.submit(respond, [msg, chat_interface, session_id], [msg, chat_interface, session_id])
-    clear_btn.click(clear_conversation, [], [chat_interface, session_id])
-    
-    # Examples
-    gr.Examples(
-        examples=[
-            "¿Qué documentos necesito para crear una sociedad limitada?",
-            "¿Cuáles son los derechos laborales básicos en España?",
-            "¿Cómo puedo registrar una marca comercial?",
-        ],
-        inputs=msg
+    human_input: str = Field(
+        ...,
+        description="The human input to the legal consultation system.",
+        examples=["¿Qué documentos necesito para crear una sociedad limitada?"]
     )
 
-# Launch the app
+
+# Create the RAG chain with history
+chain_with_history = create_rag_chain_with_history(
+    create_session_factory("chat_histories")
+).with_types(input_type=InputChat)
+
+
+# Add the chat route
+add_routes(
+    app,
+    chain_with_history,
+    path="/chat",
+)
+
+
+@app.get("/")
+async def root():
+    """Root endpoint with information about the API."""
+    return {
+        "message": "Welcome to LegifAI - Legal Consultation API",
+        "description": "A legal consultation chatbot powered by RAG with BOE documents",
+        "endpoints": {
+            "chat": "/chat - Main chat endpoint for legal consultations",
+            "docs": "/docs - API documentation",
+            "playground": "/chat/playground - Interactive chat interface"
+        },
+        "usage": "Send POST requests to /chat/invoke with session configuration"
+    }
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy", "service": "LegifAI"}
+
+
 if __name__ == "__main__":
-    # For Render, server_name should be 0.0.0.0 and port should be from the PORT env var
+    import uvicorn
+    
+    # For Render deployment, use 0.0.0.0 and PORT from environment
     server_name = "0.0.0.0"
     
-    # Render provides the PORT environment variable that the application should listen on.
-    # It's typically 10000.
+    # Render provides the PORT environment variable
     port_env = os.getenv("PORT")
     if port_env:
         server_port = int(port_env)
-        print(f"Launching Gradio app on {server_name}:{server_port} (PORT from environment variable)")
+        print(f"Launching LegifAI API server on {server_name}:{server_port} (PORT from environment)")
     else:
-        # Fallback for local development if PORT is not set (Gradio default is 7860)
-        server_port = 7860 
-        print(f"Launching Gradio app on {server_name}:{server_port} (PORT environment variable not set, using default {server_port})")
+        # Fallback for local development
+        server_port = 8000
+        print(f"Launching LegifAI API server on {server_name}:{server_port} (local development)")
 
-    demo.launch(server_name=server_name, server_port=server_port, share=False)
+    uvicorn.run(app, host=server_name, port=server_port)

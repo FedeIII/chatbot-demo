@@ -1,4 +1,6 @@
-gradio
+fastapi
+uvicorn[standard]
+langserve[all]
 python-dotenv
 langchain
 langchain-xai
@@ -7,4 +9,6 @@ pinecone-client
 langsmith
 langchain-core
 langchain-openai
+langchain-community
 openai
+requests

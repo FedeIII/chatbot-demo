@@ -1,9 +1,10 @@
 import os
 from dotenv import load_dotenv
 from langchain_xai import ChatXAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from langchain_core.runnables.history import RunnableWithMessageHistory
 from vector_store import init_vector_store
 import warnings
 from langsmith import Client
@@ -35,33 +36,98 @@ else:
 # Suppress warnings
 warnings.filterwarnings("ignore")
 
-# System prompt for the chatbot
-SYSTEM_PROMPT = """Eres un servicial asesor legal. El siguiente contexto incluye extractos de artículos del BOE para ayudar a aconsejar al usuario sobre su consulta legal.
+# System prompt for the chatbot - updated to work with message history
+SYSTEM_PROMPT = """Eres un servicial asesor legal especializado en legislación española. El siguiente contexto incluye extractos de artículos del BOE para ayudar a aconsejar al usuario sobre su consulta legal.
 
-En cada interacción, debes seguir estos pasos exactos:
+INSTRUCCIONES SEGÚN EL PASO DE LA CONVERSACIÓN:
 
-1. Si es la primera pregunta del usuario (interacción inicial), proporciona una respuesta breve y concisa mencionando los artículos del BOE relevantes. Luego, formula 2-3 preguntas específicas para entender mejor el caso.
+1. **PRIMERA INTERACCIÓN** (si no hay historial previo):
+   - Proporciona una respuesta breve y concisa mencionando los artículos del BOE relevantes
+   - Formula 2-3 preguntas específicas para entender mejor el caso del usuario
+   - Sé directo y profesional
 
-2. Si es la segunda interacción (cuando el usuario ya respondió tus preguntas), SOLO presenta una conclusión breve indicando que te harás cargo del caso, seguido de un resumen técnico muy conciso dirigido a un abogado. NO hagas más preguntas en esta etapa.
+2. **SEGUNDA INTERACCIÓN** (cuando el usuario responde a tus preguntas):
+   - SOLO presenta una conclusión breve indicando que te harás cargo del caso
+   - Seguido de un resumen técnico muy conciso dirigido a un abogado
+   - NO hagas más preguntas en esta etapa
+   - Formato: "Me haré cargo de su caso. [RESUMEN TÉCNICO PARA ABOGADO: ...]"
 
-3. Para cualquier interacción posterior, simplemente agradece al usuario y reitera que su caso será atendido.
+3. **INTERACCIONES POSTERIORES**:
+   - Simplemente agradece al usuario
+   - Reitera que su caso será atendido
+   - Mantén la respuesta muy breve
 
-Se conciso. Asume que el usuario sabe que eres un asesor legal que tiene todos los conocimientos necesarios para ayudarle.
+DIRECTRICES GENERALES:
+- Sé conciso y ve directamente al grano
+- Menciona los artículos del BOE que apliquen durante la explicación
+- Asume que el usuario sabe que eres un asesor legal competente
+- Usa un tono profesional pero accesible
 
-Ve directamente al grano, menciona los artículos del BOE que apliquen durante la explicación.
+Contexto de documentos BOE:
+{context}
 
-Contexto: {context}
+Historial de conversación:
+{history}
 
-Pregunta: {question}
-"""
+Consulta actual: {human_input}"""
 
 
-def create_rag_chain():
+def create_rag_chain_with_history(get_session_history):
     """
-    Create a RAG chain that combines a retriever with a language model
+    Create a RAG chain with message history persistence
+
+    Args:
+        get_session_history: Function to get chat history for a session
 
     Returns:
-        chain: A LangChain chain that combines retrieval and generation
+        chain: A LangChain chain with message history that combines retrieval and generation
+    """
+    # Get the XAI API key from environment variables
+    xai_api_key = os.getenv('XAI_API_KEY')
+    if not xai_api_key:
+        raise ValueError("XAI API key must be set")
+
+    # Initialize the retriever from Pinecone
+    retriever = init_vector_store()
+
+    # Initialize the ChatXAI model
+    model = ChatXAI(xai_api_key=xai_api_key, model="grok-3-mini")
+
+    # Create the prompt template with message history
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_PROMPT),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{human_input}")
+    ])
+
+    # Function to retrieve context based on the human input
+    def get_context(inputs):
+        docs = retriever.invoke(inputs["human_input"])
+        return "\n\n".join([doc.page_content for doc in docs])
+
+    # Create the RAG chain
+    rag_chain = (
+        RunnablePassthrough.assign(context=RunnableLambda(get_context))
+        | prompt
+        | model
+        | StrOutputParser()
+    )
+
+    # Wrap with message history
+    chain_with_history = RunnableWithMessageHistory(
+        rag_chain,
+        get_session_history,
+        input_messages_key="human_input",
+        history_messages_key="history",
+    )
+
+    return chain_with_history
+
+
+# Keep the original function for backward compatibility
+def create_rag_chain():
+    """
+    Create a basic RAG chain without history (legacy function)
     """
     # Get the XAI API key from environment variables
     xai_api_key = os.getenv('XAI_API_KEY')

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: legifai-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: cd src && python app.py
+    plan: starter
+    envVars:
+      - key: XAI_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX_BOE
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: LANGCHAIN_API_KEY_BOE
+        sync: false
+      - key: LANGCHAIN_PROJECT_BOE
+        value: lawyer-ai-boe
+      - key: LANGCHAIN_TRACING_V2
+        value: true 
