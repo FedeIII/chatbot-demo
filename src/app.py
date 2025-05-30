@@ -4,6 +4,8 @@
 A FastAPI server that provides legal consultation services using RAG (Retrieval-Augmented Generation)
 with BOE (Boletín Oficial del Estado) documents. The server maintains conversation history
 and follows a structured consultation flow.
+
+This version includes both the API endpoints and a Gradio web interface.
 """
 import re
 import os
@@ -11,13 +13,16 @@ from pathlib import Path
 from typing import Callable, Union
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
 from langchain_community.chat_message_histories import FileChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langserve import add_routes
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+import gradio as gr
 
 from rag_chain import create_rag_chain_with_history
+from legifai_gradio import create_gradio_app
 
 # Load environment variables
 load_dotenv()
@@ -92,7 +97,7 @@ app = FastAPI(
     version="1.0",
     description="A legal consultation chatbot that provides advice based on BOE (Boletín Oficial del Estado) documents. "
                 "The chatbot follows a structured consultation flow: initial consultation, follow-up questions, "
-                "and final legal summary.",
+                "and final legal summary. Includes both API endpoints and web interface.",
 )
 
 
@@ -119,26 +124,42 @@ add_routes(
     path="/chat",
 )
 
+# Create and mount Gradio app
+print("Creating Gradio interface...")
+gradio_app = create_gradio_app(api_base_url="")  # Empty string means same host
+gradio_app.queue()  # Enable queuing for better performance
+
+# Mount Gradio app
+app = gr.mount_gradio_app(app, gradio_app, path="/ui")
 
 @app.get("/")
 async def root():
-    """Root endpoint with information about the API."""
+    """Root endpoint - redirect to Gradio interface."""
+    return RedirectResponse(url="/ui")
+
+@app.get("/api")
+async def api_info():
+    """API information endpoint."""
     return {
         "message": "Welcome to LegifAI - Legal Consultation API",
         "description": "A legal consultation chatbot powered by RAG with BOE documents",
-        "endpoints": {
-            "chat": "/chat - Main chat endpoint for legal consultations",
+        "interfaces": {
+            "web": "/ui - Web interface (Gradio)",
+            "api": "/chat - REST API endpoints",
             "docs": "/docs - API documentation",
-            "playground": "/chat/playground - Interactive chat interface"
+            "playground": "/chat/playground - Interactive API playground"
         },
-        "usage": "Send POST requests to /chat/invoke with session configuration"
+        "usage": {
+            "web": "Visit /ui for the web interface",
+            "api": "Send POST requests to /chat/invoke with session configuration"
+        }
     }
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "service": "LegifAI"}
+    return {"status": "healthy", "service": "LegifAI", "interfaces": ["web", "api"]}
 
 
 if __name__ == "__main__":
@@ -151,10 +172,14 @@ if __name__ == "__main__":
     port_env = os.getenv("PORT")
     if port_env:
         server_port = int(port_env)
-        print(f"Launching LegifAI API server on {server_name}:{server_port} (PORT from environment)")
+        print(f"Launching LegifAI (API + Web UI) on {server_name}:{server_port} (PORT from environment)")
     else:
         # Fallback for local development
         server_port = 8000
-        print(f"Launching LegifAI API server on {server_name}:{server_port} (local development)")
+        print(f"Launching LegifAI (API + Web UI) on {server_name}:{server_port} (local development)")
+        
+    print(f"🌐 Web Interface: http://{server_name}:{server_port}/ui")
+    print(f"🔗 API Docs: http://{server_name}:{server_port}/docs")
+    print(f"💬 Chat API: http://{server_name}:{server_port}/chat")
 
     uvicorn.run(app, host=server_name, port=server_port)

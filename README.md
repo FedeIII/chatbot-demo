@@ -1,6 +1,6 @@
-# LegifAI - Legal Consultation API
+# LegifAI - Legal Consultation API & Web Interface
 
-A FastAPI-based legal consultation chatbot that provides advice based on BOE (Boletín Oficial del Estado) documents using RAG (Retrieval-Augmented Generation). The chatbot follows a structured consultation flow with persistent conversation history.
+A complete legal consultation solution that provides advice based on BOE (Boletín Oficial del Estado) documents using RAG (Retrieval-Augmented Generation). Includes both a FastAPI backend with REST endpoints and a beautiful Gradio web interface, all deployed as a single service.
 
 ## Features
 
@@ -9,11 +9,13 @@ A FastAPI-based legal consultation chatbot that provides advice based on BOE (Bo
 - 💬 **Persistent Conversations**: Maintains chat history across sessions
 - 🔄 **Structured Flow**: Three-step consultation process
 - 📊 **LangSmith Tracing**: Complete observability of the conversation chain
-- 🚀 **Production Ready**: FastAPI server ready for deployment
+- 🌐 **Dual Interface**: Web UI (Gradio) + REST API (FastAPI)
+- 🚀 **Production Ready**: Single service deployment on Render
 
 ## Architecture
 
 - **Backend**: FastAPI with LangServe for API endpoints
+- **Frontend**: Gradio web interface for user-friendly interaction
 - **LLM**: XAI Grok-3-mini for legal reasoning
 - **Vector Store**: Pinecone for document retrieval
 - **Embeddings**: OpenAI text-embedding-3-large
@@ -66,22 +68,28 @@ python src/test_server.py
 # Or manually: cd src && python app.py
 ```
 
-## API Endpoints
+## Available Interfaces
 
-### Main Chat Endpoint
-- **POST** `/chat/invoke` - Send a message to the chatbot
-- **POST** `/chat/batch` - Send multiple messages
-- **GET** `/chat/playground` - Interactive web interface
+### 🌐 Web Interface (Gradio)
+- **URL**: `/ui` or root `/`
+- **Description**: Beautiful, user-friendly chat interface
+- **Features**: 
+  - Spanish language interface
+  - Legal consultation examples
+  - Session persistence
+  - Professional styling
+  - Mobile-responsive design
 
-### Management Endpoints
-- **GET** `/` - API information
-- **GET** `/health` - Health check
-- **GET** `/docs` - OpenAPI documentation
+### 🔗 REST API (FastAPI)
+- **Chat Endpoint**: `POST /chat/invoke`
+- **API Docs**: `/docs`
+- **Playground**: `/chat/playground`
+- **Health Check**: `/health`
 
-### Example Usage
+### Example API Usage
 
 ```bash
-# Start a conversation
+# Start a legal consultation
 curl -X POST "http://localhost:8000/chat/invoke" \
   -H "Content-Type: application/json" \
   -d '{
@@ -96,41 +104,56 @@ curl -X POST "http://localhost:8000/chat/invoke" \
   }'
 ```
 
-## Deployment
+## Deployment on Render
 
-### Render Deployment
+### Option 1: Using render.yaml (Recommended for new services)
 
-1. Connect your repository to Render
-2. Set environment variables in Render dashboard:
+1. **Create New Service**: In Render dashboard, click "New" → "Blueprint"
+2. **Connect Repository**: Link your GitHub repository
+3. **Auto-Configuration**: Render will detect `render.yaml` and pre-fill settings
+4. **Set Secret Environment Variables**: Add your API keys in the dashboard:
    - `XAI_API_KEY`
    - `PINECONE_API_KEY`
    - `PINECONE_INDEX_BOE`
    - `OPENAI_API_KEY`
    - `LANGCHAIN_API_KEY_BOE` (optional)
-   - `LANGCHAIN_PROJECT_BOE` (optional)
 
-3. Set build command: `pip install -r requirements.txt`
-4. Set start command: `cd src && python app.py`
+### Option 2: Manual Configuration (For existing services)
 
-The server will automatically use the `PORT` environment variable provided by Render.
+1. **Push Changes**: Commit and push all code to your repository
+2. **Update Service Settings** in Render dashboard:
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `cd src && python app.py`
+3. **Set Environment Variables**:
+   - Add all required API keys
+   - Set `LANGCHAIN_PROJECT_BOE=lawyer-ai-boe`
+   - Set `LANGCHAIN_TRACING_V2=true`
+4. **Deploy**: Trigger manual deploy or push to auto-deploy
+
+After deployment, your service will be available at:
+- **Web Interface**: `https://your-service.onrender.com/ui`
+- **API Documentation**: `https://your-service.onrender.com/docs`
+- **API Endpoint**: `https://your-service.onrender.com/chat/invoke`
 
 ### Local Development
 
 ```bash
-# Start with default port 8000
+# Start combined service (API + Web UI)
 cd src && python app.py
 
-# Or use uvicorn directly
-uvicorn app:app --host 0.0.0.0 --port 8000
+# Available at:
+# Web Interface: http://localhost:8000/ui
+# API Docs: http://localhost:8000/docs
+# Chat API: http://localhost:8000/chat
 ```
 
 ## LangSmith Integration
 
-The application is configured to send detailed traces to LangSmith, showing:
-- User input processing
+The application sends detailed traces to LangSmith, showing:
+- User input processing (both web and API)
 - Document retrieval from Pinecone  
 - LLM reasoning and response generation
-- Complete conversation chain
+- Complete conversation chain across interfaces
 
 Set `LANGCHAIN_API_KEY_BOE` and `LANGCHAIN_PROJECT_BOE` in your environment to enable tracing.
 
@@ -139,15 +162,18 @@ Set `LANGCHAIN_API_KEY_BOE` and `LANGCHAIN_PROJECT_BOE` in your environment to e
 ```
 chatbot-demo/
 ├── src/
-│   ├── app.py              # FastAPI server with LangServe
-│   ├── rag_chain.py        # RAG chain with message history
-│   ├── vector_store.py     # Pinecone vector store setup
-│   ├── test_server.py      # Server test suite
-│   └── ...                 # Other utilities
-├── requirements.txt        # Python dependencies
-├── env.example            # Environment variables template
-├── start_server.sh        # Startup script
-└── README.md              # This file
+│   ├── app.py                 # Combined FastAPI + Gradio server
+│   ├── legifai_gradio.py      # Gradio web interface
+│   ├── rag_chain.py           # RAG chain with message history
+│   ├── vector_store.py        # Pinecone vector store setup
+│   ├── test_server.py         # Server test suite
+│   └── chat_histories/        # Session storage (auto-created)
+├── requirements.txt           # Python dependencies
+├── env.example               # Environment variables template
+├── render.yaml               # Render deployment configuration
+├── start_server.sh           # Startup script
+├── client_example.py         # API client example
+└── README.md                 # This file
 ```
 
 ## Environment Variables
@@ -162,6 +188,18 @@ chatbot-demo/
 - `LANGCHAIN_API_KEY_BOE`: LangSmith API key for tracing
 - `LANGCHAIN_PROJECT_BOE`: LangSmith project name
 - `PORT`: Server port (auto-set by Render)
+
+## Testing
+
+Run the comprehensive test suite:
+```bash
+python src/test_server.py
+```
+
+Test the API client:
+```bash
+python client_example.py
+```
 
 ## License
 

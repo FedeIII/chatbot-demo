@@ -51,13 +51,16 @@ def test_imports():
     
     try:
         from app import app
-        print("✓ FastAPI app imported successfully")
+        print("✓ Combined FastAPI + Gradio app imported successfully")
         
         from rag_chain import create_rag_chain_with_history
         print("✓ RAG chain creation function imported")
         
         from vector_store import init_vector_store
         print("✓ Vector store initialization function imported")
+        
+        from legifai_gradio import create_gradio_app
+        print("✓ Gradio interface creation function imported")
         
         return True
     except ImportError as e:
