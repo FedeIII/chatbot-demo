@@ -197,4 +197,6 @@ with gr.Blocks(css="""
 # Launch the app
 if __name__ == "__main__":
     print("Starting the Gradio app. Access it in your browser at http://127.0.0.1:7860")
-    demo.launch(share=False) 
+    server_name = os.getenv("RENDER_INTERNAL_HOSTNAME", "0.0.0.0")
+    server_port = int(os.getenv("PORT", 7860))
+    demo.launch(server_name=server_name, server_port=server_port, share=False) 
