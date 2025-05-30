@@ -11,8 +11,21 @@ from typing import List, Tuple
 class LegifAIGradioClient:
     def __init__(self, api_base_url: str = None):
         """Initialize the Gradio client."""
-        # For deployment, the API will be on the same host
-        self.api_base_url = api_base_url or "http://localhost:8000"
+        # For deployment, use Render environment variables when api_base_url is empty or None
+        if not api_base_url:
+            # Check if running on Render
+            render_external_url = os.getenv('RENDER_EXTERNAL_URL')
+            if render_external_url:
+                # Remove trailing slash if present
+                self.api_base_url = render_external_url.rstrip('/')
+                print(f"LegifAI Gradio Client: Using Render URL: {self.api_base_url}")
+            else:
+                # Fallback for local development
+                self.api_base_url = "http://localhost:8000"
+                print(f"LegifAI Gradio Client: Using local development URL: {self.api_base_url}")
+        else:
+            self.api_base_url = api_base_url
+            print(f"LegifAI Gradio Client: Using provided URL: {self.api_base_url}")
         
     def send_message_to_api(self, message: str, session_id: str) -> str:
         """Send a message to the FastAPI backend."""

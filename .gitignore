@@ -1,3 +1,6 @@
+chat_histories
+chat_histories/*
+
 # Environment variables
 .env
 .env.*
